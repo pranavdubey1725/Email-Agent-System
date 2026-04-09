@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
     res.json({ success: true, messageId: result.messageId });
   } catch (err) {
     console.error('Send error:', err.message);
-    res.status(500).json({ error: 'Failed to send email. Please check your settings and try again.' });
+    res.status(500).json({ error: err.message || 'Failed to send email. Please check your settings and try again.' });
   }
 });
 
