@@ -1,6 +1,6 @@
 # Email Agent
 
-An intelligent email agent that composes and sends emails from voice or text input. Describe your email in plain English — the AI extracts the recipient, subject, and body, lets you review and edit, then delivers it.
+An intelligent email agent that composes and sends emails from voice or text input. Describe your email in plain English — the AI extracts the recipient, subject, and body, lets you review and edit, then delivers it directly from your Gmail account.
 
 **Live demo:** https://email-agent-system-pranavdubey1725s-projects.vercel.app
 
@@ -8,10 +8,11 @@ An intelligent email agent that composes and sends emails from voice or text inp
 
 ## What It Does
 
-1. **Speak or type** your email intent — *"Email sarah@company.com about the project deadline, tell her we're on track"*
-2. **AI parses it** using GPT-4o-mini — extracts recipient, subject, and a full email body
-3. **Review and edit** the extracted fields before sending
-4. **Email is delivered** via Gmail SMTP — straight to the recipient's inbox
+1. **Sign in with Google** — one click, no passwords stored
+2. **Speak or type** your email intent — *"Email sarah@company.com about the project deadline, tell her we're on track"*
+3. **AI parses it** using GPT-4o-mini — extracts recipient, subject, and a full email body
+4. **Review and edit** the extracted fields before sending
+5. **Email is delivered** from your own Gmail via the Gmail API
 
 ---
 
@@ -19,13 +20,15 @@ An intelligent email agent that composes and sends emails from voice or text inp
 
 | Feature | Details |
 |---|---|
+| Google OAuth 2.0 | Sign in with Google — email sent from your own Gmail account |
+| Session management | Session stored in `localStorage`, sign-out clears it |
 | Voice input | OpenAI Whisper — client-side silence detection, server-side transcription |
 | Text input | Textarea with 500-character counter |
 | AI parsing | GPT-4o-mini extracts `to`, `subject`, `body` |
 | Tone selector | Raw · Formal · Friendly · Concise |
 | Confidence flagging | Amber warning when the recipient address was reconstructed or guessed |
 | Editable review form | Edit any field before sending, live word count |
-| Email delivery | Nodemailer + Gmail SMTP |
+| Email delivery | Gmail API (OAuth 2.0) — sends from the signed-in user's Gmail |
 | Dark mode | Persisted to `localStorage` |
 | Error handling | Every failure path surfaces a clear, actionable message |
 
@@ -37,8 +40,9 @@ An intelligent email agent that composes and sends emails from voice or text inp
 Frontend    React 19 (Vite)
 Voice       OpenAI Whisper (via backend API)
 AI          OpenAI GPT-4o-mini
+Auth        Google OAuth 2.0 + Gmail API
 Backend     Node.js 22 + Express 5
-Email       Nodemailer + Gmail SMTP
+Email       Gmail API (googleapis)
 Deployed    Render (backend) · Vercel (frontend)
 ```
 
@@ -51,6 +55,7 @@ email-agent/
 ├── client/                          # React frontend (Vite)
 │   └── src/
 │       ├── components/
+│       │   ├── Login.jsx               # Google sign-in screen
 │       │   ├── InputPanel.jsx          # Text + voice input, tone selector
 │       │   ├── ConfirmationForm.jsx    # Editable review form, confidence warning
 │       │   ├── StatusMessage.jsx       # Error/success/info banners
@@ -59,19 +64,21 @@ email-agent/
 │       │   ├── useWhisper.js           # MediaRecorder + amplitude check + Whisper
 │       │   └── useSpeechRecognition.js # Web Speech API — kept for reference
 │       ├── services/
-│       │   └── api.js                  # All fetch calls to the backend
-│       └── App.jsx                     # Step state machine, dark mode
+│       │   └── api.js                  # All fetch calls; attaches X-Session-Id header
+│       └── App.jsx                     # Auth state, step machine, dark mode
 │
 ├── server/                          # Express backend
 │   ├── routes/
+│   │   ├── auth.js                  # GET /auth/google, /auth/google/callback, /auth/me, POST /auth/logout
 │   │   ├── transcribe.js            # POST /api/transcribe
 │   │   ├── parse.js                 # POST /api/parse
-│   │   └── send.js                  # POST /api/send
+│   │   └── send.js                  # POST /api/send (requires OAuth session)
 │   ├── services/
-│   │   ├── openaiService.js         # GPT parsing, tone logic, confidence flagging
-│   │   └── emailService.js          # Nodemailer, SMTP error handling
+│   │   ├── sessionStore.js          # In-memory session map
+│   │   ├── gmailService.js          # Gmail API send (OAuth token)
+│   │   └── openaiService.js         # GPT parsing, tone logic, confidence flagging
 │   ├── index.js                     # Entry point, CORS, middleware
-│   ├── test.js                      # Backend test script (17 tests, all passing)
+│   ├── test.js                      # Backend test script (19 tests, all passing)
 │   └── .env.example                 # Required environment variables
 │
 └── docs/
@@ -79,7 +86,7 @@ email-agent/
     ├── WEBSPEECH_FINDINGS.md        # Why Web Speech API was replaced by Whisper
     ├── OPENAI_FINDINGS.md           # Why GPT-4o-mini, capability comparison
     ├── CONFIDENCE_FLAGGING.md       # Confidence flagging design and implementation
-    ├── EMAIL_SERVICE_REPORT.md      # SMTP, Nodemailer, Gmail App Password
+    ├── EMAIL_SERVICE_REPORT.md      # Gmail API, OAuth 2.0 approach
     ├── TESTS.md                     # All tests (automated + manual), bugs found and fixed
     └── FULL_PROJECT_REPORT.md       # Complete project reference
 ```
@@ -90,11 +97,12 @@ email-agent/
 
 ### Basic flow
 
-1. **Choose a tone** — Raw, Formal, Friendly, or Concise
-2. **Describe your email** — type it or click the mic and speak
-3. **Click Continue** — GPT extracts recipient, subject, and body
-4. **Review the fields** — edit anything if needed
-5. **Click Send Email** — email is delivered to the recipient
+1. **Sign in with Google** — click the button, authorise once
+2. **Choose a tone** — Raw, Formal, Friendly, or Concise
+3. **Describe your email** — type it or click the mic and speak
+4. **Click Continue** — GPT extracts recipient, subject, and body
+5. **Review the fields** — edit anything if needed
+6. **Click Send Email** — email is delivered from your Gmail account
 
 ### Tone modes
 
@@ -116,6 +124,40 @@ If the AI reconstructed or guessed the recipient address (e.g. from a spoken for
 ---
 
 ## API Reference
+
+### `GET /auth/google`
+
+Redirects the browser to Google's OAuth consent screen.
+
+---
+
+### `GET /auth/google/callback`
+
+Google redirects here after the user grants permission. Exchanges the auth code for tokens, creates a session, and redirects to the frontend with `?session=<id>`.
+
+---
+
+### `GET /auth/me`
+
+Returns the signed-in user's profile.
+
+**Headers:** `X-Session-Id: <session id>`
+
+**Response:** `{ "email": "user@gmail.com", "name": "User Name" }`
+
+**Errors:** `401` if session is missing or expired.
+
+---
+
+### `POST /auth/logout`
+
+Destroys the current session.
+
+**Headers:** `X-Session-Id: <session id>`
+
+**Response:** `{ "success": true }`
+
+---
 
 ### `POST /api/transcribe`
 
@@ -157,11 +199,15 @@ Parses natural language into structured email fields.
 
 ### `POST /api/send`
 
-Sends an email via Gmail SMTP.
+Sends an email via Gmail API using the signed-in user's OAuth token.
+
+**Headers:** `X-Session-Id: <session id>`
 
 **Request:** `{ "to": "...", "subject": "...", "body": "..." }`
 
-**Response:** `{ "success": true, "messageId": "<abc123@gmail.com>" }`
+**Response:** `{ "success": true, "messageId": "<abc123>" }`
+
+**Errors:** `401` if not authenticated, `400` if fields are missing or invalid.
 
 ---
 
@@ -180,7 +226,7 @@ Sends an email via Gmail SMTP.
 
 - Node.js v18+
 - OpenAI API key — [platform.openai.com](https://platform.openai.com)
-- Gmail account with 2-Step Verification and an App Password
+- Google Cloud project with OAuth 2.0 credentials and Gmail API enabled
 
 ### Install
 
@@ -192,12 +238,27 @@ cd client && npm install
 cd ../server && npm install
 ```
 
+### Google Cloud Setup
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. **APIs & Services → Library** → search "Gmail API" → **Enable**
+3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
+4. Application type: **Web application**
+5. Authorised redirect URIs: `http://localhost:5000/auth/google/callback`
+6. Copy the **Client ID** and **Client Secret**
+7. **OAuth consent screen → Test users** → add your Gmail address
+
 ### Configure
 
 ```bash
 cd server
 cp .env.example .env
-# Fill in OPENAI_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD
+# Fill in OPENAI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
+```
+
+Create `client/.env.local`:
+```
+VITE_API_URL=http://localhost:5000
 ```
 
 ### Run
@@ -218,13 +279,13 @@ Open `http://localhost:5173`.
 
 ## Testing
 
-Automated backend tests — 17/17 passing:
+Automated backend tests — 19/19 passing:
 
 ```bash
 cd server && node test.js
 ```
 
-See [docs/TESTS.md](docs/TESTS.md) for the full test breakdown, all 20 manual UI tests, and the 3 bugs found and fixed during testing.
+See [docs/TESTS.md](docs/TESTS.md) for the full test breakdown, all manual UI tests, and the bugs found and fixed during testing.
 
 ---
 
@@ -236,7 +297,7 @@ See [docs/TESTS.md](docs/TESTS.md) for the full test breakdown, all 20 manual UI
 | [docs/WEBSPEECH_FINDINGS.md](docs/WEBSPEECH_FINDINGS.md) | Why Web Speech API was replaced by Whisper |
 | [docs/OPENAI_FINDINGS.md](docs/OPENAI_FINDINGS.md) | Why GPT-4o-mini, capability comparison table |
 | [docs/CONFIDENCE_FLAGGING.md](docs/CONFIDENCE_FLAGGING.md) | Confidence flagging design and implementation |
-| [docs/EMAIL_SERVICE_REPORT.md](docs/EMAIL_SERVICE_REPORT.md) | SMTP, Nodemailer, Gmail App Password explained |
+| [docs/EMAIL_SERVICE_REPORT.md](docs/EMAIL_SERVICE_REPORT.md) | Gmail API, OAuth 2.0, session management |
 | [docs/TESTS.md](docs/TESTS.md) | Automated + manual tests, bugs found and fixed |
 | [docs/FULL_PROJECT_REPORT.md](docs/FULL_PROJECT_REPORT.md) | Complete project reference document |
 
