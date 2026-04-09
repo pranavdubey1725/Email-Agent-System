@@ -185,7 +185,7 @@ Sends an email via Gmail SMTP.
 ### Install
 
 ```bash
-git clone https://github.com/your-username/email-agent.git
+git clone https://github.com/pranavdubey1725/Email-Agent-System.git
 cd email-agent
 
 cd client && npm install
