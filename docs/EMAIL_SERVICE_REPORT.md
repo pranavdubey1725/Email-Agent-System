@@ -1,20 +1,23 @@
 # Email Service — In-Depth Technical Report
 
-> **Purpose:** A complete explanation of how the email sending feature works in this project — from the moment the user clicks Send, to the email landing in the recipient's inbox. Written to be understood without prior backend experience.
+> **Purpose:** A complete explanation of how the email sending feature works in this project — from the user signing in with Google, to the email landing in the recipient's inbox. Written to be understood without prior backend experience.
 
 ---
 
 ## Table of Contents
 
 1. [The Big Picture](#1-the-big-picture)
-2. [What is SMTP?](#2-what-is-smtp)
-3. [What is Nodemailer?](#3-what-is-nodemailer)
-4. [Why Gmail App Password?](#4-why-gmail-app-password)
-5. [The Full Request Flow](#5-the-full-request-flow)
-6. [File-by-File Breakdown](#6-file-by-file-breakdown)
-7. [What the Email Looks Like When It Arrives](#7-what-the-email-looks-like-when-it-arrives)
-8. [Why This Architecture](#8-why-this-architecture)
-9. [Limitations & What You'd Change in Production](#9-limitations--what-youd-change-in-production)
+2. [Why Google OAuth 2.0?](#2-why-google-oauth-20)
+3. [What is OAuth 2.0?](#3-what-is-oauth-20)
+4. [What is the Gmail API?](#4-what-is-the-gmail-api)
+5. [The OAuth Flow — Step by Step](#5-the-oauth-flow--step-by-step)
+6. [Session Management](#6-session-management)
+7. [The Full Send Flow](#7-the-full-send-flow)
+8. [File-by-File Breakdown](#8-file-by-file-breakdown)
+9. [What the Email Looks Like When It Arrives](#9-what-the-email-looks-like-when-it-arrives)
+10. [Why This Architecture](#10-why-this-architecture)
+11. [Previous Approach — Nodemailer + SMTP](#11-previous-approach--nodemailer--smtp)
+12. [Limitations & What You'd Change in Production](#12-limitations--what-youd-change-in-production)
 
 ---
 
@@ -26,330 +29,461 @@ When the user clicks **Send Email** in the confirmation form, here is what happe
 Browser (React)
     │
     │  POST /api/send  { to, subject, body }
+    │  Header: X-Session-Id: <session id>
     ▼
 Express Server (Node.js)
     │
-    │  Validates the data
-    │  Calls emailService.sendEmail()
+    │  Looks up the session → gets the user's OAuth access token
+    │  Validates the email fields
+    │  Calls gmailService.sendEmailViaGmail()
     ▼
-Nodemailer
+Gmail API (googleapis)
     │
-    │  Opens a connection to Gmail's SMTP server
-    │  Authenticates with your Gmail App Password
-    │  Hands over the email
+    │  Authenticates using the user's access token
+    │  Builds an RFC 2822 encoded email message
+    │  Calls gmail.users.messages.send()
     ▼
-Gmail's SMTP Server
+Gmail
     │
-    │  Delivers the email
+    │  Delivers the email from the user's own Gmail account
     ▼
 Recipient's Inbox
 ```
 
 Three things are involved:
-- **Your Express server** — receives the request from the browser, validates it, passes it on
-- **Nodemailer** — a Node.js library that handles the technical work of connecting to Gmail and sending
-- **Gmail's SMTP server** — Gmail's own mail delivery infrastructure that actually sends the email
+- **Your Express server** — receives the request, verifies the session, passes it to the Gmail API
+- **googleapis** — Google's official Node.js SDK that handles the Gmail API communication
+- **Gmail API** — Google's REST API for Gmail, which delivers the email from the user's own account
 
 ---
 
-## 2. What is SMTP?
+## 2. Why Google OAuth 2.0?
 
-**SMTP** stands for **Simple Mail Transfer Protocol**. It is the standard internet protocol for sending emails — invented in 1982 and still in use today.
+The previous approach (Nodemailer + Gmail SMTP + App Password) had a fundamental limitation: **all emails were sent from one fixed Gmail account** — whoever owned the App Password in `.env`. This means:
 
-Think of it like a postal system:
-- You write a letter (your email)
-- You take it to the post office (the SMTP server)
-- The post office delivers it to the recipient
+- Every user's email appeared to come from the same address
+- The App Password had to be rotated manually if it expired or was revoked
+- The owner's personal Gmail account bore all the sending load
+- It couldn't scale to multiple users
 
-Every email provider has an SMTP server:
-
-| Provider | SMTP Server Address | Port |
-|---|---|---|
-| Gmail | smtp.gmail.com | 587 |
-| Outlook | smtp.office365.com | 587 |
-| Yahoo | smtp.mail.yahoo.com | 465 |
-
-When you send an email from Gmail's website, Google handles SMTP internally — you never see it. When we send email programmatically (from code), we connect to Gmail's SMTP server directly and hand it our email to deliver.
-
-**What happens during an SMTP connection:**
-1. Our server opens a TCP connection to `smtp.gmail.com` on port 587
-2. Gmail's server says "hello, who are you?"
-3. We authenticate — provide email address and App Password
-4. We hand over the email (recipient, subject, body, headers)
-5. Gmail says "received, I'll deliver it"
-6. Connection closes
-
-All of this is handled automatically by Nodemailer — we never write any of this manually.
+With Google OAuth 2.0:
+- **Each user signs in with their own Google account**
+- Emails are sent from their own Gmail address
+- No passwords are stored — Google handles authentication
+- If the user revokes access, the app immediately loses the ability to send on their behalf
+- The app only gets the `gmail.send` permission — it cannot read, delete, or modify any emails
 
 ---
 
-## 3. What is Nodemailer?
+## 3. What is OAuth 2.0?
 
-**Nodemailer** is a Node.js library (package) that handles all the low-level SMTP communication for you.
+**OAuth 2.0** is an open standard for delegated authorisation. It allows users to grant an application limited access to their account on another service, without giving the application their password.
 
-Without Nodemailer, sending an email in Node.js would require:
-- Manually opening a TCP socket connection
-- Negotiating TLS encryption with the server
-- Writing raw SMTP commands (`EHLO`, `AUTH`, `MAIL FROM`, `RCPT TO`, `DATA`)
-- Formatting email headers correctly (MIME format)
-- Handling errors at every step
+Think of it like a hotel key card:
+- The hotel (Google) issues a key card (access token) that only opens specific doors
+- The guest (user) decides which doors to grant access to
+- The app uses the key card — it never sees the master key (password)
+- The hotel can deactivate the key card at any time
 
-That's hundreds of lines of complex networking code. Nodemailer wraps all of it into this:
+The flow:
+1. The app redirects the user to Google's sign-in page
+2. The user logs in to Google and sees what permissions the app is requesting
+3. The user approves (or denies)
+4. Google issues an **access token** (short-lived, ~1 hour) and a **refresh token** (long-lived)
+5. The app uses the access token to make API calls on behalf of the user
+
+The user's password is never sent to our server — only to Google. Our server only ever sees the tokens.
+
+---
+
+## 4. What is the Gmail API?
+
+The **Gmail API** is Google's official REST API for programmatic access to Gmail. Unlike SMTP (which is a raw protocol for delivering emails), the Gmail API:
+
+- Uses OAuth 2.0 for authentication — no passwords
+- Sends from the authenticated user's own account
+- Works with Google's modern security infrastructure
+- Respects the specific permissions the user granted (we only request `gmail.send`)
+
+The `googleapis` npm package is Google's official Node.js client for all Google APIs, including Gmail.
 
 ```js
-const transporter = nodemailer.createTransport({ /* Gmail credentials */ });
-await transporter.sendMail({ from, to, subject, text, html });
+import { google } from 'googleapis';
+
+const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encodedMessage } });
 ```
 
-Two lines. That's the whole thing.
-
-**Nodemailer is the most downloaded email library for Node.js** — over 3 million downloads per week. It is the standard choice for this kind of project.
+`userId: 'me'` means "the currently authenticated user" — Gmail knows who that is from the access token.
 
 ---
 
-## 4. Why Gmail App Password?
+## 5. The OAuth Flow — Step by Step
 
-### The Problem with Regular Passwords
+### Step 1 — User clicks "Sign in with Google"
 
-Since May 2022, Google no longer allows apps to log into Gmail using your regular Google password. If you tried, you'd get an authentication error. This was a security decision — regular passwords give too much access.
+`Login.jsx` does a full-page redirect to the backend:
 
-### What is an App Password?
-
-An **App Password** is a special 16-character password that Google generates specifically for one app. It:
-- Works only for SMTP access (sending email)
-- Does **not** give the app access to your Google Drive, Calendar, contacts, or anything else
-- Can be revoked at any time without changing your main password
-- Looks like: `abcd efgh ijkl mnop` (Google shows it with spaces; you remove the spaces when using it)
-
-### How to Generate One
-
-1. Go to your Google Account
-2. Click **Security**
-3. Make sure **2-Step Verification is ON** (required — App Passwords only work with 2FA enabled)
-4. Search for **"App passwords"**
-5. Give it a name (e.g. "Email Agent") → Click **Create**
-6. Google shows you the 16-character password — copy it immediately (you only see it once)
-
-### Where It Lives in This Project
-
-It is stored in `server/.env`:
-```
-GMAIL_USER=yourname@gmail.com
-GMAIL_APP_PASSWORD=abcdefghijklmnop
+```js
+window.location.href = `${BASE_URL}/auth/google`;
 ```
 
-The server reads it via `process.env.GMAIL_APP_PASSWORD` — it is never hardcoded in the source code and never committed to git (`.gitignore` blocks the `.env` file).
+This is a browser redirect, not a `fetch` call. The user's browser navigates away from the app entirely.
 
 ---
 
-## 5. The Full Request Flow
+### Step 2 — Backend generates the consent URL
 
-Here is every step that happens when the user clicks Send, in detail:
+`server/routes/auth.js` builds a Google OAuth URL:
+
+```js
+const auth = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+const url = auth.generateAuthUrl({
+  access_type: 'offline',
+  scope: [
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/gmail.send',
+  ],
+  prompt: 'consent',
+});
+res.redirect(url);
+```
+
+`access_type: 'offline'` requests a refresh token (so the app can re-authenticate after the access token expires without asking the user to sign in again).
+
+`prompt: 'consent'` forces Google to always show the consent screen and always return a fresh refresh token.
+
+---
+
+### Step 3 — Google shows the consent screen
+
+The user sees a Google-branded page listing exactly what the app is requesting:
+- "Send email on your behalf"
+
+The user can approve or deny.
+
+---
+
+### Step 4 — Google redirects to the callback
+
+After approval, Google redirects the browser to the `GOOGLE_REDIRECT_URI`:
+
+```
+https://email-agent-system-8kix.onrender.com/auth/google/callback?code=4/0AbcDef...
+```
+
+The `code` is a one-time authorisation code.
+
+---
+
+### Step 5 — Backend exchanges the code for tokens
+
+```js
+const { tokens } = await auth.getToken(code);
+// tokens = { access_token, refresh_token, expiry_date, ... }
+```
+
+This is a server-to-server call — the code is exchanged for real tokens. The tokens never touch the user's browser.
+
+---
+
+### Step 6 — Backend creates a session
+
+A session is created with the tokens and the user's profile:
+
+```js
+const sessionId = createSession({
+  accessToken: tokens.access_token,
+  refreshToken: tokens.refresh_token,
+  email: userInfo.email,
+  name: userInfo.name,
+});
+```
+
+The session lives in an in-memory `Map` on the server. The `sessionId` is a UUID.
+
+---
+
+### Step 7 — Backend redirects to the frontend with the session ID
+
+```js
+res.redirect(`${process.env.FRONTEND_URL}?session=${sessionId}`);
+```
+
+The browser lands back on the frontend with the session ID in the URL query string.
+
+---
+
+### Step 8 — Frontend picks up the session
+
+`App.jsx` reads the `?session=` param on mount:
+
+```js
+const params = new URLSearchParams(window.location.search);
+const sessionId = params.get('session');
+localStorage.setItem('sessionId', sessionId);
+setSessionId(sessionId); // stores in api.js module variable
+```
+
+The URL is cleaned up (`window.history.replaceState`), and the session ID is stored in `localStorage` for persistence across page refreshes.
+
+---
+
+## 6. Session Management
+
+### How sessions are stored
+
+`server/services/sessionStore.js` maintains a `Map` in memory:
+
+```js
+const sessions = new Map();
+
+export function createSession(data) {
+  const id = crypto.randomUUID();
+  sessions.set(id, { ...data, createdAt: Date.now() });
+  return id;
+}
+```
+
+Each entry holds `{ accessToken, refreshToken, email, name, createdAt }`.
+
+### How the frontend uses the session
+
+`client/src/services/api.js` stores the session ID in a module-level variable and attaches it to every request as a header:
+
+```js
+let _sessionId = null;
+
+async function safeFetch(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (_sessionId) headers['X-Session-Id'] = _sessionId;
+  // ...
+}
+```
+
+Using a custom `X-Session-Id` header (rather than cookies) avoids CORS credential complexity and works cleanly across different origins (Vercel frontend ↔ Render backend).
+
+### Session persistence across page refreshes
+
+On mount, `App.jsx` reads from `localStorage`:
+
+```js
+const sessionId = sessionFromUrl || localStorage.getItem('sessionId');
+setSessionId(sessionId);
+const me = await getMe(); // hits /auth/me to verify the session is still valid
+if (!me) localStorage.removeItem('sessionId'); // session expired — clean up
+```
+
+If the server has restarted (in-memory sessions are lost), `/auth/me` returns `401` and the user is taken back to the sign-in screen.
+
+### Sign-out
+
+`POST /auth/logout` deletes the session from the `Map`. The frontend then clears `localStorage` and resets to the sign-in screen.
+
+---
+
+## 7. The Full Send Flow
+
+Here is every step that happens when the user clicks Send Email, after authentication is established:
 
 ### Step 1 — Frontend sends the request
-`client/src/services/api.js` makes a POST request:
+
+`client/src/services/api.js`:
 
 ```js
 fetch('/api/send', {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Session-Id': sessionId,
+  },
   body: JSON.stringify({ to, subject, body })
 })
 ```
 
-The Vite dev server proxy forwards this to `http://localhost:5000/api/send`.
+---
+
+### Step 2 — Backend verifies the session
+
+`server/routes/send.js`:
+
+```js
+const session = getSession(req.headers['x-session-id']);
+if (!session) return res.status(401).json({ error: 'Not signed in. Please sign in with Google first.' });
+```
+
+If the session is missing or expired: `401` immediately. The Gmail API is never called.
 
 ---
 
-### Step 2 — Express route receives it
-`server/routes/send.js` handles the incoming request.
+### Step 3 — Field validation
 
-**Validation check 1 — are all fields present?**
 ```js
-if (!to || !subject || !body) {
-  return res.status(400).json({ error: 'to, subject, and body are all required.' });
-}
-```
-If any field is missing, the request is rejected immediately with a 400 error. The email service is never called.
-
-**Validation check 2 — is the email address valid?**
-```js
+if (!to || !subject || !body) return res.status(400).json({ error: '...' });
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-if (!emailRegex.test(to)) {
-  return res.status(400).json({ error: `"${to}" doesn't look like a valid email address.` });
-}
+if (!emailRegex.test(to)) return res.status(400).json({ error: '...' });
 ```
-This catches obvious malformed addresses like `pranav@` or `notanemail` before wasting a connection to Gmail's servers.
 
-If both checks pass, it calls the email service.
+Same validation as before — catches missing fields and malformed addresses before making any external API call.
 
 ---
 
-### Step 3 — emailService creates a transporter
-`server/services/emailService.js` creates a Nodemailer transporter:
+### Step 4 — gmailService builds and sends the email
+
+`server/services/gmailService.js`:
 
 ```js
-nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD
-  }
-})
+const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+oauth2Client.setCredentials({ access_token, refresh_token });
+
+const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+// Build RFC 2822 message
+const lines = [
+  `From: ${senderName} <${senderEmail}>`,
+  `To: ${to}`,
+  `Subject: ${subject}`,
+  'MIME-Version: 1.0',
+  'Content-Type: text/plain; charset=UTF-8',
+  '',
+  body,
+];
+const raw = Buffer.from(lines.join('\r\n')).toString('base64url');
+
+await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
 ```
 
-`service: 'gmail'` is a shortcut — Nodemailer already knows Gmail's SMTP server address and port. You don't have to specify `smtp.gmail.com:587` manually.
+**RFC 2822** is the standard email message format. The message must be base64url-encoded before being sent to the Gmail API.
+
+`userId: 'me'` tells the Gmail API to send as the authenticated user — whose identity comes from the access token.
 
 ---
 
-### Step 4 — Mail options are defined
+### Step 5 — Response sent back to frontend
 
 ```js
-const mailOptions = {
-  from: `"Email Agent" <${process.env.GMAIL_USER}>`,
-  to,
-  subject,
-  text: body,
-  html: `<p>${body.replace(/\n/g, '<br>')}</p>`
-}
+res.json({ success: true, messageId: result.data.id });
 ```
 
-**Breaking down each field:**
-
-| Field | What it does | Example |
-|---|---|---|
-| `from` | What the recipient sees as the sender name and address | `"Email Agent" <pranav@gmail.com>` |
-| `to` | Recipient's email address | `sarah@company.com` |
-| `subject` | The subject line | `Project Update` |
-| `text` | Plain text version of the body | `Hi Sarah, ...` |
-| `html` | HTML version of the body | `<p>Hi Sarah, ...</p>` |
-
-**Why both `text` and `html`?**
-Email clients are inconsistent. Old clients (some corporate Outlook setups) only support plain text. Modern clients prefer HTML. By sending both, Nodemailer attaches them as a `multipart/alternative` MIME package and the email client automatically picks the version it supports. This is best practice.
-
-The HTML conversion is simple: replace newline characters (`\n`) with `<br>` tags so line breaks are preserved when rendered in a browser.
+The frontend moves to the `'sent'` step and shows the success screen.
 
 ---
 
-### Step 5 — Nodemailer sends it
+## 8. File-by-File Breakdown
 
-```js
-const result = await transporter.sendMail(mailOptions);
-```
-
-Under the hood, Nodemailer:
-1. Opens a TLS-encrypted TCP connection to `smtp.gmail.com:587`
-2. Sends `EHLO` (greeting) to Gmail's server
-3. Authenticates using your Gmail address and App Password
-4. Transmits the email headers and body
-5. Gmail acknowledges receipt
-6. Connection closes
-
-`result` contains a `messageId` — a unique ID Gmail assigns to every email it accepts. We return this to the frontend as confirmation.
-
----
-
-### Step 6 — Response sent back to frontend
-
-```js
-res.json({ success: true, messageId: result.messageId });
-```
-
-The frontend receives this, the App component moves to the `'sent'` step, and the success screen is shown.
-
----
-
-## 6. File-by-File Breakdown
-
-### `server/services/emailService.js`
-**Role:** Pure email-sending logic. Takes `{ to, subject, body }`, connects to Gmail, sends.
-
-This file has one job and one job only — it knows nothing about HTTP requests or validation. It just sends emails. This separation makes it easy to test in isolation or swap Gmail for a different provider later.
+### `server/routes/auth.js`
+**Role:** Owns the entire OAuth flow — four endpoints.
 
 ```
-createTransporter()    → sets up the Gmail SMTP connection
-sendEmail({ to, subject, body }) → builds mail options and sends
+GET  /auth/google           → redirect to Google consent screen
+GET  /auth/google/callback  → exchange code, create session, redirect to frontend
+GET  /auth/me               → return { email, name } for current session
+POST /auth/logout            → delete session
 ```
+
+### `server/services/sessionStore.js`
+**Role:** In-memory session store. A `Map` from session ID (UUID) to `{ accessToken, refreshToken, email, name, createdAt }`.
+
+No database required. Sessions survive until the server restarts. On restart, users must sign in again — this is acceptable for a demo. In production you'd persist sessions to Redis or a database.
+
+### `server/services/gmailService.js`
+**Role:** Pure email-sending logic using the Gmail API.
+
+```
+buildAuth(accessToken, refreshToken)  → creates an authenticated OAuth2 client
+buildRawMessage({ senderName, senderEmail, to, subject, body })  → RFC 2822 base64url
+sendEmailViaGmail({ ...tokens, senderName, senderEmail, to, subject, body })  → sends
+```
+
+Error classification:
+| Error | User-facing message |
+|---|---|
+| `401`, `invalid_grant`, `Token has been expired` | "Your Google session has expired. Please sign in again." |
+| `403`, `insufficientPermissions` | "Gmail permission denied. Please sign in again." |
+| Invalid `To` address | "The recipient address was rejected by Gmail." |
+| Anything else | "Email could not be sent: [original error]" |
 
 ### `server/routes/send.js`
-**Role:** HTTP layer. Receives the request, validates inputs, calls the service, returns the response.
+**Role:** HTTP layer for email sending. Verifies session, validates fields, delegates to `gmailService`.
 
-This file knows nothing about how email actually works — it delegates that to `emailService`. Its only job is to be the gatekeeper: check the data is valid before passing it on.
+### `client/src/components/Login.jsx`
+**Role:** The sign-in screen shown to unauthenticated users. One Google-styled button that redirects to `/auth/google`.
 
-```
-POST /api/send
-  → validate (all fields present, email format valid)
-  → call sendEmail()
-  → return { success, messageId } or error
-```
-
-### `server/.env`
-**Role:** Stores secrets. Never committed to git.
-
-```
-GMAIL_USER=yourname@gmail.com
-GMAIL_APP_PASSWORD=abcdefghijklmnop
-```
+### `client/src/App.jsx`
+**Role:** Manages auth state. On mount, reads `?session=` from URL or `localStorage`, verifies with `/auth/me`, shows `<Login>` if not authenticated, shows the full app if authenticated.
 
 ### `client/src/services/api.js`
-**Role:** Frontend's communication layer. The React components never use `fetch` directly — they call `sendEmail()` from this file.
-
-```js
-export async function sendEmail({ to, subject, body }) {
-  const response = await fetch('/api/send', { ... });
-  // throws a readable error if something goes wrong
-}
-```
+**Role:** All backend communication. Attaches `X-Session-Id` header to every request. Exports `getMe()` and `logout()` in addition to `parseMessage()` and `sendEmail()`.
 
 ---
 
-## 7. What the Email Looks Like When It Arrives
+## 9. What the Email Looks Like When It Arrives
 
 When the recipient opens the email, they see:
 
 ```
-From:    Email Agent <yourname@gmail.com>
-To:      recipient@gmail.com
+From:    Pranav Dubey <pranavdubey1725@gmail.com>
+To:      recipient@example.com
 Subject: [whatever GPT generated]
 
-[Body — written by GPT, formatted as a proper email]
-
-Best regards,
+[Body — written by GPT or the user's own words, depending on tone]
 ```
 
-The **From name** shows as "Email Agent" — that is the display name we set in the `from` field. The actual sending address is your Gmail account.
+The **From** name and address are the signed-in user's actual Gmail identity — not a generic "Email Agent" display name. The email looks like it came directly from the user, because it did.
 
 ---
 
-## 8. Why This Architecture
+## 10. Why This Architecture
 
-### Why Node.js + Express for the backend?
-The email sending **must** happen on a backend server, not in the browser. Reasons:
-- Browser code is public — anyone could open DevTools and steal your Gmail credentials
-- Browsers don't support raw SMTP connections (they can only make HTTP requests)
-- The server acts as a secure intermediary: frontend sends `{ to, subject, body }`, server handles everything else
+### Why OAuth over SMTP + App Password?
 
-### Why Nodemailer over SendGrid / Mailgun?
-SendGrid and Mailgun are commercial email services. They offer higher deliverability, analytics, and no Gmail limits. But for this project:
-- They require account sign-up and domain verification
-- They charge money beyond free tiers
-- Nodemailer + Gmail is free, instant to set up, and perfectly sufficient for a demo
+| | SMTP + App Password | OAuth 2.0 + Gmail API |
+|---|---|---|
+| Sends from | One fixed account | The signed-in user's own account |
+| Credentials stored | App Password in `.env` | Only tokens, not passwords |
+| Multi-user support | No | Yes |
+| Revocable | Only by deleting the App Password | User can revoke from Google Account at any time |
+| Security scope | SMTP access to one account | `gmail.send` only — can't read, delete, or modify |
+| Google's direction | Deprecated for apps | The recommended modern approach |
 
-### Why not use the Gmail API directly?
-The Gmail API (Google's official REST API for Gmail) would give more control — access to drafts, threads, labels, etc. But it requires OAuth 2.0, which involves user login flows, access tokens, refresh tokens, and much more complexity. For simply sending an email, SMTP via Nodemailer is far simpler and achieves the same result.
+### Why in-memory sessions over cookies?
+
+Cookies require `SameSite` and `Secure` settings to work cross-origin, plus `withCredentials: true` on every fetch. Custom headers (`X-Session-Id`) work cleanly without any of that complexity. For a project with a split Vercel/Render deployment, headers are simpler.
+
+### Why `googleapis` over raw HTTP calls?
+
+`googleapis` handles OAuth token refresh automatically. If an access token expires during a session, the library uses the refresh token to get a new one transparently. With raw HTTP calls, you'd have to implement this yourself.
 
 ---
 
-## 9. Limitations & What You'd Change in Production
+## 11. Previous Approach — Nodemailer + SMTP
+
+The original implementation used:
+- **Nodemailer** — a Node.js library for SMTP communication
+- **Gmail SMTP** (`smtp.gmail.com:465`) — Gmail's mail delivery server
+- **Gmail App Password** — a 16-character credential for programmatic SMTP access
+
+It worked, but had three problems in production:
+1. **IPv6 on Render**: Gmail's SMTP server resolved to an IPv6 address (`2607:f8b0:...`), but Render's free tier doesn't support IPv6. Fixed temporarily with `dns.setDefaultResultOrder('ipv4first')` and `family: 4` on the transporter.
+2. **Fixed sender**: All emails came from the same Gmail account, not from the user.
+3. **App Password management**: The 16-character password needed to be rotated manually and shared between deployments.
+
+The switch to OAuth 2.0 resolved all three of these permanently.
+
+---
+
+## 12. Limitations & What You'd Change in Production
 
 | Limitation | Why it exists | Production fix |
 |---|---|---|
-| Sending from your personal Gmail | App Passwords only work with regular Gmail | Use a dedicated sending account, or switch to SendGrid / AWS SES |
-| Gmail sending limits | Free Gmail accounts can send ~500 emails/day | Switch to SendGrid (free tier: 100/day, paid for more) |
-| No email delivery confirmation | We only know Gmail *accepted* the email, not that it was *delivered* | Use SendGrid webhooks for delivery/bounce/open events |
-| Emails may land in spam | Gmail flags programmatically sent emails | Use a verified sending domain (SPF, DKIM, DMARC records) |
-| No retry on failure | If Gmail's SMTP is temporarily down, the send just fails | Add retry logic with exponential backoff |
-| Credentials in `.env` on one machine | Works locally, doesn't scale | Use a secrets manager (AWS Secrets Manager, Doppler) in production |
+| In-memory sessions | Simple to implement, no database needed | Use Redis or a database-backed session store |
+| Sessions lost on server restart | In-memory only | Persist sessions to Redis with expiry |
+| No token refresh handling in UI | If access token expires mid-session, send fails | Catch `401` from Gmail API, redirect to re-auth |
+| No email delivery confirmation | Gmail API confirms acceptance, not delivery | Use Gmail's `users.messages.get` to check sent status |
+| Single scope | Only `gmail.send` — can't check if email was received | Add read scopes if building a full email client |
+| Testing mode in Google Cloud | Only approved test users can sign in | Go through Google's OAuth verification process |
 
 ---
 
@@ -357,14 +491,12 @@ The Gmail API (Google's official REST API for Gmail) would give more control —
 
 | Component | Technology | Job |
 |---|---|---|
-| HTTP route | Express.js (`routes/send.js`) | Receive request, validate, delegate |
-| Email logic | Nodemailer (`services/emailService.js`) | Connect to Gmail SMTP, send |
-| Credentials | `.env` file | Store secrets securely off the codebase |
-| Mail server | Gmail SMTP (`smtp.gmail.com:587`) | Actually deliver the email |
-| Auth method | Gmail App Password | Authenticate without exposing main password |
-
-The entire email service is **35 lines of code** across two files. Nodemailer handles all the complexity of SMTP — we just tell it what to send and where.
+| Auth flow | Google OAuth 2.0 (`/auth/google`, `/auth/google/callback`) | Get user consent, exchange code for tokens |
+| Session store | In-memory `Map` (`sessionStore.js`) | Hold tokens between requests |
+| Send route | Express (`routes/send.js`) | Auth check, field validation, delegate |
+| Gmail API client | `googleapis` (`gmailService.js`) | Build RFC 2822 message, send via Gmail API |
+| Frontend auth | `Login.jsx`, `App.jsx`, `api.js` | Show sign-in screen, store session ID, attach header |
 
 ---
 
-*Last updated: 2026-04-07*
+*Last updated: 2026-04-10*
