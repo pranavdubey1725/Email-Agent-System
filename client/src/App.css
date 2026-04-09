@@ -96,6 +96,101 @@ body {
   flex: 1;
 }
 
+.app__header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ---- Signed-in user badge ---- */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.user-info__email {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn--sm {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+/* ---- Google sign-in button ---- */
+.btn--google {
+  background: #fff;
+  color: #3c4043;
+  border: 1.5px solid #dadce0;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 8px;
+  gap: 0.6rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.btn--google:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #c6c8cc;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] .btn--google {
+  background: #2d2d3d;
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .btn--google:hover:not(:disabled) {
+  background: #3a3a50;
+}
+
+/* ---- Login screen ---- */
+.login-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 1rem;
+  gap: 1rem;
+}
+
+.login-screen__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-screen__title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.login-screen__desc {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  max-width: 380px;
+  line-height: 1.6;
+}
+
 /* ---- Dark mode toggle button ---- */
 .theme-toggle {
   background: var(--color-surface);

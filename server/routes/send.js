@@ -1,12 +1,22 @@
 import express from 'express';
-import { sendEmail } from '../services/emailService.js';
+import { getSession } from '../services/sessionStore.js';
+import { sendEmailViaGmail } from '../services/gmailService.js';
 
 const router = express.Router();
 
 // POST /api/send
+// Headers: X-Session-Id: <session id from OAuth flow>
 // Body: { to, subject, body }
 // Returns: { success: true, messageId }
 router.post('/', async (req, res) => {
+  // Auth check
+  const sessionId = req.headers['x-session-id'];
+  const session = getSession(sessionId);
+
+  if (!session) {
+    return res.status(401).json({ error: 'Not signed in. Please sign in with Google first.' });
+  }
+
   const { to, subject, body } = req.body;
 
   // Basic validation
@@ -21,11 +31,19 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const result = await sendEmail({ to, subject, body });
-    res.json({ success: true, messageId: result.messageId });
+    const messageId = await sendEmailViaGmail({
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      senderName: session.name,
+      senderEmail: session.email,
+      to,
+      subject,
+      body,
+    });
+    res.json({ success: true, messageId });
   } catch (err) {
     console.error('Send error:', err.message);
-    res.status(500).json({ error: err.message || 'Failed to send email. Please check your settings and try again.' });
+    res.status(500).json({ error: err.message || 'Failed to send email. Please try again.' });
   }
 });
 
