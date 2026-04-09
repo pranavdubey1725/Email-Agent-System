@@ -31,7 +31,12 @@ app.use('/api/transcribe', transcribeRouter);
 
 // Health check — visit http://localhost:5000/health to confirm server is running
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Email Agent server is running' });
+  res.json({
+    status: 'ok',
+    message: 'Email Agent server is running',
+    frontendUrl: process.env.FRONTEND_URL || '(not set — defaulting to localhost:5173)',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+  });
 });
 
 // --- Start ---
