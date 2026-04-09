@@ -1,0 +1,395 @@
+/* =============================================
+   Design Tokens — Light Mode (default)
+   ============================================= */
+:root {
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-light: #eef2ff;
+  --color-primary-glow: rgba(79, 70, 229, 0.15);
+
+  --color-surface: #ffffff;
+  --color-background: #f5f5f5;
+  --color-border: #e5e7eb;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6b7280;
+
+  --color-error: #ef4444;
+  --color-success: #22c55e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+
+  /* Dark mode toggle icon */
+  --toggle-icon: '🌙';
+}
+
+/* =============================================
+   Design Tokens — Dark Mode
+   Applied when <html> has data-theme="dark"
+   ============================================= */
+[data-theme="dark"] {
+  --color-primary: #818cf8;
+  --color-primary-hover: #a5b4fc;
+  --color-primary-light: #1e1b4b;
+  --color-primary-glow: rgba(129, 140, 248, 0.2);
+
+  --color-surface: #1e1e2e;
+  --color-background: #13131f;
+  --color-border: #2e2e45;
+
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #64748b;
+
+  --color-error: #f87171;
+  --color-success: #4ade80;
+
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+
+  --toggle-icon: '☀';
+}
+
+/* =============================================
+   Reset & Base
+   ============================================= */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* =============================================
+   App Layout
+   ============================================= */
+.app {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ---- Header ---- */
+.app__header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+/* Push the dark mode toggle to the far right */
+.app__header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: 1;
+}
+
+/* ---- Dark mode toggle button ---- */
+.theme-toggle {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 20px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.app__logo {
+  width: 44px;
+  height: 44px;
+  background: var(--color-primary);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.app__title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.app__tagline {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ---- Step indicator ---- */
+.app__steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.step-dot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  position: relative;
+}
+
+/* Connecting line between dots */
+.step-dot:not(:last-child)::after {
+  content: '';
+  flex: 1;
+  height: 1.5px;
+  background: var(--color-border);
+  margin: 0 0.5rem;
+}
+
+.step-dot--complete:not(:last-child)::after {
+  background: var(--color-primary);
+}
+
+.step-dot__number {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.step-dot--active .step-dot__number {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.step-dot--complete .step-dot__number {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.step-dot__label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.step-dot--active .step-dot__label {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ---- Card ---- */
+.app__card {
+  background: var(--color-surface);
+  border-radius: 14px;
+  padding: 1.75rem;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  /* Smooth background/shadow transition when toggling dark mode */
+  transition: background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* ---- Step content fade transition ---- */
+.step-content {
+  animation: stepFadeIn 0.25s ease forwards;
+}
+
+@keyframes stepFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Footer ---- */
+.app__footer {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.app__footer p {
+  margin: 0;
+}
+
+/* =============================================
+   Shared Button Styles
+   ============================================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  border: 1.5px solid transparent;
+  line-height: 1;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-background);
+  border-color: #d1d5db;
+}
+
+/* Spinner inside button */
+.btn__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+}
+
+.btn__arrow {
+  font-size: 1rem;
+  transition: transform 0.15s ease;
+}
+
+.btn--primary:hover:not(:disabled) .btn__arrow {
+  transform: translateX(2px);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* =============================================
+   Error Boundary (full-page crash fallback)
+   ============================================= */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  background: var(--color-background);
+}
+
+.error-boundary__icon {
+  font-size: 2.5rem;
+  color: #f59e0b;
+}
+
+.error-boundary__title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.error-boundary__detail {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  max-width: 400px;
+}
+
+/* =============================================
+   Success screen (Phase 4 — after email is sent)
+   ============================================= */
+.success-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1rem;
+  gap: 1rem;
+}
+
+.success-screen__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.success-screen__title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.success-screen__detail {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}

@@ -1,0 +1,9 @@
+/* Global resets only — component styles live in their own .css files */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}

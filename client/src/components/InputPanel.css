@@ -1,0 +1,305 @@
+/* ---- Tone Selector ---- */
+.tone-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tone-selector__label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tone-selector__options {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tone-btn {
+  padding: 0.35rem 0.85rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.tone-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.tone-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.tone-btn--active:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: white;
+}
+
+.tone-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tone-selector__hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  font-style: italic;
+  min-height: 1em; /* prevents layout shift as hint changes */
+}
+
+/* ---- Input Mode Row (Text / Voice toggle) ---- */
+.input-panel__modes {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.input-mode-label {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.input-mode-unsupported {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  cursor: help;
+}
+
+/* ---- Mic Button ---- */
+.mic-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 20px;            /* pill shape */
+  border: 1.5px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mic-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+/* Active state — red while recording */
+.mic-btn--active {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+.mic-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50%       { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+
+/* ---- Recording indicator banner ---- */
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #991b1b;
+}
+
+/* Animated red dot */
+.recording-indicator__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ---- InputPanel ---- */
+.input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.input-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.input-panel__title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.input-panel__subtitle {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ---- Form ---- */
+.input-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.input-panel__textarea-wrapper {
+  position: relative;
+}
+
+.input-panel__textarea {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  padding-bottom: 2rem; /* space for char counter */
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.input-panel__textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
+}
+
+.input-panel__textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input-panel__textarea--error {
+  border-color: var(--color-error);
+}
+
+.input-panel__textarea--error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+/* Character counter — sits inside the textarea wrapper, bottom-right */
+.input-panel__char-count {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+.input-panel__char-count--error {
+  color: var(--color-error);
+  font-weight: 500;
+}
+
+.input-panel__error {
+  font-size: 0.85rem;
+  color: var(--color-error);
+  margin: 0;
+}
+
+/* ---- Actions ---- */
+.input-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* ---- Example chips ---- */
+.input-panel__examples {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.25rem;
+}
+
+.input-panel__examples-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.6rem 0;
+}
+
+.input-panel__examples-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.example-chip {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.example-chip:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.example-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

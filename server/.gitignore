@@ -1,0 +1,5 @@
+# Secret config — NEVER commit this
+.env
+
+# Dependencies folder — too large to commit, reinstalled via npm install
+node_modules/
