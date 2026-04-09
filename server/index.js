@@ -1,6 +1,10 @@
+import dns from 'dns';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+
+// Render's free tier doesn't support IPv6 — force all DNS lookups to IPv4.
+dns.setDefaultResultOrder('ipv4first');
 import parseRouter from './routes/parse.js';
 import sendRouter from './routes/send.js';
 import transcribeRouter from './routes/transcribe.js';
