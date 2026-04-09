@@ -19,13 +19,14 @@ An intelligent email agent that composes and sends emails from voice or text inp
 
 | Feature | Details |
 |---|---|
-| Voice input | OpenAI Whisper — records audio and transcribes via the Whisper API |
-| Text input | Textarea with character counter |
+| Voice input | OpenAI Whisper — records audio, detects silence client-side, transcribes via API |
+| Text input | Textarea with 500-character counter |
 | AI parsing | GPT-4o-mini extracts `to`, `subject`, `body` |
 | Tone selector | Raw · Formal · Friendly · Concise — controls how GPT writes the body |
-| Confidence flagging | Amber warning when GPT is uncertain about the email address |
-| Editable review form | Edit any field before sending |
+| Confidence flagging | Amber warning when the recipient address was reconstructed or guessed |
+| Editable review form | Edit any field before sending, word count on body |
 | Email delivery | Nodemailer + Gmail SMTP |
+| Dark mode | Persisted to localStorage |
 | Error handling | Every failure path shows a clear, actionable message |
 
 ---
@@ -38,6 +39,7 @@ Voice      OpenAI Whisper (via backend transcription API)
 AI         OpenAI GPT-4o-mini
 Backend    Node.js 22 + Express 5
 Email      Nodemailer + Gmail SMTP
+Deployed   Render (backend) + Vercel (frontend)
 ```
 
 ---
@@ -54,27 +56,31 @@ email-agent/
 │       │   ├── StatusMessage.jsx     # Error/success/info banners
 │       │   └── ErrorBoundary.jsx     # Catches unexpected React crashes
 │       ├── hooks/
-│       │   └── useWhisper.js         # MediaRecorder + Whisper transcription
+│       │   ├── useWhisper.js         # MediaRecorder + silence detection + Whisper
+│       │   └── useSpeechRecognition.js  # Web Speech API (reference only — not used)
 │       ├── services/
 │       │   └── api.js                # All fetch calls to the backend
-│       └── App.jsx                   # Main app shell + step management
+│       └── App.jsx                   # Main app shell + step state machine
 │
 ├── server/                        # Express backend
 │   ├── routes/
-│   │   ├── transcribe.js          # POST /api/transcribe
-│   │   ├── parse.js               # POST /api/parse
-│   │   └── send.js                # POST /api/send
+│   │   ├── transcribe.js          # POST /api/transcribe — Whisper
+│   │   ├── parse.js               # POST /api/parse — GPT-4o-mini
+│   │   └── send.js                # POST /api/send — Gmail SMTP
 │   ├── services/
-│   │   ├── openaiService.js       # GPT-4o-mini parsing + confidence
-│   │   └── emailService.js        # Nodemailer email delivery
-│   ├── index.js                   # Server entry point
-│   ├── test.js                    # Backend API test script
+│   │   ├── openaiService.js       # GPT parsing, tone logic, confidence flagging
+│   │   └── emailService.js        # Nodemailer transporter, SMTP error handling
+│   ├── index.js                   # Server entry point, CORS, middleware
+│   ├── test.js                    # Backend API test script (17 tests)
 │   └── .env.example               # Environment variable template
 │
 └── docs/
-    ├── OPENAI_FINDINGS.md         # Why OpenAI over NLP libraries
-    ├── CONFIDENCE_FLAGGING.md     # Confidence flagging design doc
-    └── EMAIL_SERVICE_REPORT.md    # Email service deep-dive
+    ├── NLP_FINDINGS.md            # Why regex + NLP failed, all 6 failure cases
+    ├── OPENAI_FINDINGS.md         # Why GPT-4o-mini was chosen, capability comparison
+    ├── CONFIDENCE_FLAGGING.md     # Confidence flagging design and implementation
+    ├── EMAIL_SERVICE_REPORT.md    # Email delivery deep-dive (SMTP, Nodemailer)
+    ├── TESTS.md                   # All automated and manual tests, bugs found and fixed
+    └── FULL_PROJECT_REPORT.md     # Complete project reference document
 ```
 
 ---
@@ -100,12 +106,10 @@ cd email-agent
 
 ```bash
 # Frontend
-cd client
-npm install
+cd client && npm install
 
 # Backend
-cd ../server
-npm install
+cd ../server && npm install
 ```
 
 ### 3. Configure environment variables
@@ -115,7 +119,7 @@ cd server
 cp .env.example .env
 ```
 
-Open `server/.env` and fill in the required values:
+Open `server/.env` and fill in:
 
 ```env
 OPENAI_API_KEY=sk-proj-...
@@ -123,6 +127,18 @@ GMAIL_USER=yourname@gmail.com
 GMAIL_APP_PASSWORD=abcdefghijklmnop
 PORT=5000
 ```
+
+### 4. Run locally
+
+```bash
+# Terminal 1 — backend
+cd server && node index.js
+
+# Terminal 2 — frontend
+cd client && npm run dev
+```
+
+Open `http://localhost:5173`.
 
 ---
 
@@ -147,17 +163,46 @@ PORT=5000
 
 ### Voice input
 
-Click the mic button and speak naturally. Recording stops when you click again. The audio is sent to Whisper for transcription — the result appears in the textarea and can be edited before submitting.
-
-Voice input works in all modern browsers (Chrome, Edge, Firefox, Safari).
+Click the mic and speak naturally. The app analyses the recording for actual speech before sending to Whisper — silent recordings are discarded client-side without making an API call. Works in all modern browsers (Chrome, Edge, Firefox, Safari).
 
 ### Confidence warning
 
-If the AI is uncertain about the email address it extracted (e.g. the address was partially spoken or inferred), the **To** field will show an amber border and a warning:
+If the AI reconstructed or guessed the recipient address (e.g. from a spoken format like "pranav at gmail dot com"), the **To** field shows an amber border:
 
 > ⚠ AI wasn't certain about this address — please verify it before sending.
 
-Always double-check the recipient before sending.
+The warning disappears once you edit the field.
+
+---
+
+## Testing
+
+### Automated
+
+```bash
+cd server && node test.js
+```
+
+Runs 17 tests against all backend routes. Requires the server to be running and `OPENAI_API_KEY` set in `.env`. Results: **17/17 passing**.
+
+See [docs/TESTS.md](docs/TESTS.md) for the full test breakdown, all manual tests, and bugs found during testing.
+
+---
+
+## Deployment
+
+### Backend — Render
+
+- **Root Directory:** `server`
+- **Build Command:** `npm install`
+- **Start Command:** `node index.js`
+- **Environment variables:** `OPENAI_API_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `FRONTEND_URL` (your Vercel URL)
+
+### Frontend — Vercel
+
+- **Root Directory:** `client`
+- **Framework:** Vite
+- **Environment variables:** `VITE_API_URL` (your Render backend URL)
 
 ---
 
@@ -165,33 +210,22 @@ Always double-check the recipient before sending.
 
 ### `POST /api/transcribe`
 
-Transcribes an audio recording using OpenAI Whisper.
+Transcribes audio using OpenAI Whisper. Silent recordings return `""`.
 
-**Request:** `multipart/form-data` with an `audio` field (webm blob)
+**Request:** `multipart/form-data` — field `audio` (webm blob)
 
-**Response:**
-```json
-{ "transcript": "Email john at example dot com about the Friday meeting" }
-```
+**Response:** `{ "transcript": "..." }`
 
 ---
 
 ### `POST /api/parse`
 
-Parses a natural language message into email fields using GPT-4o-mini.
+Parses natural language into structured email fields.
 
-**Request body:**
+**Request:**
 ```json
-{
-  "message": "Email john@example.com about the Friday meeting",
-  "tone": "formal"
-}
+{ "message": "Email john@example.com about the Friday meeting", "tone": "formal" }
 ```
-
-| Field | Type | Required | Values |
-|---|---|---|---|
-| `message` | string | Yes | The user's natural language input |
-| `tone` | string | No | `raw` · `formal` · `friendly` · `concise` (default: `raw`) |
 
 **Response:**
 ```json
@@ -203,12 +237,7 @@ Parses a natural language message into email fields using GPT-4o-mini.
 }
 ```
 
-| Field | Description |
-|---|---|
-| `to` | Extracted email address, or `""` if not found |
-| `subject` | Generated subject line |
-| `body` | Email body in the requested tone |
-| `toConfidence` | `"high"` if GPT found a clear address, `"low"` if it guessed or couldn't find one |
+`toConfidence` is `"high"` only when a literal `@` address was present in the input. Everything else — reconstructed spoken addresses, guesses from names — returns `"low"`.
 
 ---
 
@@ -216,36 +245,31 @@ Parses a natural language message into email fields using GPT-4o-mini.
 
 Sends an email via Gmail SMTP.
 
-**Request body:**
+**Request:**
 ```json
-{
-  "to": "john@example.com",
-  "subject": "Friday Meeting",
-  "body": "I would like to discuss the Friday meeting."
-}
+{ "to": "john@example.com", "subject": "Friday Meeting", "body": "..." }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "messageId": "<abc123@gmail.com>"
-}
-```
+**Response:** `{ "success": true, "messageId": "<abc123@gmail.com>" }`
 
 ---
 
 ### `GET /health`
 
-Health check — confirms the server is running.
+**Response:** `{ "status": "ok", "message": "Email Agent server is running" }`
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "Email Agent server is running"
-}
-```
+---
+
+## Documentation
+
+| File | Contents |
+|---|---|
+| [docs/NLP_FINDINGS.md](docs/NLP_FINDINGS.md) | All 6 failure cases from the regex + NLP approach |
+| [docs/OPENAI_FINDINGS.md](docs/OPENAI_FINDINGS.md) | Why GPT-4o-mini was chosen, capability comparison |
+| [docs/CONFIDENCE_FLAGGING.md](docs/CONFIDENCE_FLAGGING.md) | Confidence flagging design and implementation |
+| [docs/EMAIL_SERVICE_REPORT.md](docs/EMAIL_SERVICE_REPORT.md) | SMTP, Nodemailer, Gmail App Password explained |
+| [docs/TESTS.md](docs/TESTS.md) | All tests (automated + manual), bugs found and fixed |
+| [docs/FULL_PROJECT_REPORT.md](docs/FULL_PROJECT_REPORT.md) | Complete project reference document |
 
 ---
 
