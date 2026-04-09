@@ -14,7 +14,7 @@ async function safeFetch(url, options) {
   } catch {
     // fetch itself threw — this means the server is completely unreachable
     throw new Error(
-      'Cannot reach the server. Make sure it is running (node index.js) and try again.'
+      'Cannot reach the server. Please try again in a moment.'
     );
   }
 
