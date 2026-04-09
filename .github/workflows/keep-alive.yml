@@ -12,11 +12,14 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://email-agent-system-8kix.onrender.com/health)
+          echo "Pinging Render backend (may take up to 90s on cold start)..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://email-agent-system-8kix.onrender.com/health || echo "timeout")
           echo "Response: $response"
           if [ "$response" = "200" ]; then
             echo "✓ Backend is up"
+          elif [ "$response" = "timeout" ]; then
+            echo "⚠ Request timed out — Render may still be waking up (not a failure)"
           else
-            echo "✗ Backend returned $response"
+            echo "✗ Backend returned unexpected status: $response"
             exit 1
           fi
