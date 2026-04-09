@@ -1,0 +1,22 @@
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes — keeps Render free tier from spinning down
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # allow manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://email-agent-system-8kix.onrender.com/health)
+          echo "Response: $response"
+          if [ "$response" = "200" ]; then
+            echo "✓ Backend is up"
+          else
+            echo "✗ Backend returned $response"
+            exit 1
+          fi
