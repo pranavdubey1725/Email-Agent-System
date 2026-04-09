@@ -2,7 +2,7 @@
 
 An intelligent email agent that composes and sends emails from voice or text input. Describe your email in plain English — the AI extracts the recipient, subject, and body, lets you review and edit, then delivers it.
 
-**Live demo:** `[URL]`
+**Live demo:** https://email-agent-system-pranavdubey1725s-projects.vercel.app
 
 ---
 
