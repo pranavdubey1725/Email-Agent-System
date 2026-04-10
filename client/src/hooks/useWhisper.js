@@ -106,7 +106,8 @@ function useWhisper({ onTranscriptChange }) {
       const formData = new FormData();
       formData.append('audio', blob, 'audio.webm');
 
-      const res = await fetch('/api/transcribe', {
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${baseUrl}/api/transcribe`, {
         method: 'POST',
         body: formData,
       });
